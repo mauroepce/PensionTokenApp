@@ -1,4 +1,15 @@
 {
+  "name": "PensionTokenApp Api",
+  "version": "1.0.0",
+  "description": "Pension Token Api",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ./index.js",
+    "dev": "nodemon ./index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Mauricio Patiño",
+  "license": "MIT",
   "dependencies": {
     "@solana/web3.js": "^1.93.0",
     "axios": "^1.7.2",
@@ -9,3 +20,4 @@
     "nodemon": "^3.1.3"
   }
 }
+
