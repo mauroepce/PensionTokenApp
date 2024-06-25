@@ -1,16 +1,17 @@
-const express = require('express');
-const fs = require('fs');
-const router = express.Router();
+const {Router} = require('express');
+const fs = require("fs");
 
-const PATH = __dirname;
+const pathName = __dirname
+
+const router = Router();
 
 const removeExtension = (fileName) => {
-    return fileName.split(".").shift();
+    return fileName.split(".").shift()
 }
 
-fs.readdirSync(PATH).filter((fileName) => {
+fs.readdirSync(pathName).filter( fileName => {
     const name = removeExtension(fileName);
-    if (name !== "index"){
+    if(name !== "index"){
         router.use(`/${name}`, require(`./${fileName}`))
     }
 })
