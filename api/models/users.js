@@ -31,6 +31,9 @@ const UserScheme = new mongoose.Schema(
             type: Number,
             default: 0
         },
+        verificationSentAt: { 
+            type: Date 
+        },
     },
     {
         timestamps:true, // createdAt, updatedAt

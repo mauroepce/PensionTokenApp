@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { encrypt } = require("../utils/handlePassword");
-const { tokenSign } = require('../utils/handlejwt');
+const { tokenSign, verifyToken } = require('../utils/handlejwt');
 const { compare } = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { sendVerificationEmail } = require('../utils/emailNotification');
@@ -23,83 +23,77 @@ const authController = {
     registerController: async (req, res) => {
         try {
             // Receive the user data
-            const newUser = req.body
-            const { email } = req.body
-            console.log('newUser', newUser)
+            const newUser = req.body;
+            const { email } = req.body;
+            
             const password = await encrypt(newUser.password);
             const payload = { ...newUser, password };
-            console.log('payload', payload);
-
+    
             // Verify if the email is already registered
             const existingUser = await users.findOne({ email });
-
-            console.log('existingUser', existingUser);
-            if (existingUser !== null && existingUser.isVerified === true) {
-                return res.status(400).send({ error: "This email already contains a registered account" });
-
-            } else if (existingUser !== null && !existingUser.isVerified && existingUser.verificationToken) {
-                if (existingUser.verificationAttempts < 3) {
-                    // Increment of attempts in the DB
-                    await users.findByIdAndUpdate(existingUser._id, { $inc: { verificationAttempts: 1 } });
-                    return res.status(400).send({ userData: existingUser, error: "Looks like you've already registered with this email! Please check your inbox to verify." });
-                } else {
-                    const currentTime = new Date().getTime();
-                    const lastAttemptTime = existingUser.updatedAt.getTime();
-                    const timeDifference = currentTime - lastAttemptTime;
-
-                    if (timeDifference < 5 * 60 * 1000) {
-                        console.log("existing user", existingUser)
+    
+            if (existingUser !== null) {
+                if (existingUser.isVerified) {
+                    return res.status(400).send({ error: "This email already contains a registered account" });
+                }
+    
+                const currentTime = new Date().getTime();
+                const lastSentTime = existingUser.verificationSentAt ? existingUser.verificationSentAt.getTime() : 0;
+                const timeDifference = currentTime - lastSentTime;
+                const sixHoursInMillis = 6 * 60 * 60 * 1000;
+                
+                // Check if the user has tried to verify the email more than 3 times
+                if (existingUser.verificationAttempts >= 3) {
+                    if (timeDifference < 5 * 60 * 1000) { // 5 minutes
                         return res.status(400).send({existingUser, error: "Too many verification attempts. Please wait for 5 minutes before trying again." });
                     } else {
-                        // Restart of attempts counter and updated in DB 
-                        await users.findByIdAndUpdate(existingUser._id, { $set: { verificationAttempts: 1 } });
+                        await users.findByIdAndUpdate(existingUser._id, { $set: { verificationAttempts: 0 } });
                     }
                 }
-            } else {
-
+    
+                // Check if the user has tried to verify the email in the last 6 hours
+                if (timeDifference >= sixHoursInMillis) {
+                    const verificationToken = uuidv4();
+                    const updatedUser = await users.findByIdAndUpdate(
+                        existingUser._id,
+                        { verificationToken, verificationSentAt: new Date(), $inc: { verificationAttempts: 1 } },
+                        { new: true }
+                    );
+    
+                    await sendVerificationEmail(updatedUser.email, updatedUser.verificationToken);
+                    return res.status(400).send({ userData: updatedUser, error: "Looks like you've already registered with this email! A new verification email has been sent. Please check your inbox to verify." });
+                } else {
+                    await users.findByIdAndUpdate(existingUser._id, { $inc: { verificationAttempts: 1 } });
+                    return res.status(400).send({ userData: existingUser, error: "Looks like you've already registered with this email! Please check your inbox to verify." });
+                }
             }
-
+    
             // Register the user on DB 
             const userCreated = await users.create(payload);
             userCreated.set("password", undefined, { strict: false });
-
-            console.log('userCreated', userCreated);
             
-            // Create a property call "token" with a json web token value
-            const data = {
-                token: await tokenSign(userCreated),
-                user: userCreated,
-            };
-
             // Generate verification token
             const verificationToken = uuidv4();
-
+    
             // Store the verification token in the DB
             const storeVerificationTokenData = await users.findByIdAndUpdate(
                 userCreated._id,
-                { verificationToken }
+                { verificationToken, verificationSentAt: new Date(), verificationAttempts: 1 },
+                { new: true }
             );
-
-            console.log('storeVerificationTokenData', storeVerificationTokenData);
-            // check if the token was stored
-            // const tokenStored = storeVerificationTokenData.data.verificationToken;
+    
+            // Check if the token was stored
+            const tokenStored = storeVerificationTokenData.verificationToken;
             
-            // Send verification email  if the token was stored
-            // if(tokenStored) {
-            //    await sendVerificationEmail(userData.email, tokenStored);
-            // }          
-
-            res.status(200).send({data})
+            // Send verification email if the token was stored
+            if (tokenStored) {
+                await sendVerificationEmail(storeVerificationTokenData.email, tokenStored);
+            }
+    
+            res.status(200).send({ user: userCreated });
         } catch (error) {
-
-            console.error(`Error while registering the "user" on DB: ${error.message}`)
- 
-                const errorMessage = error
-                console.log(errorMessage)
-                res.status(400).json({
-                    error: errorMessage
-                });
-
+            console.error(`Error while registering the "user" on DB: ${error.message}`);
+            res.status(400).json({ error: error.message });
         }
     },
 
@@ -169,7 +163,7 @@ const authController = {
             const token = req.body;
             
             // Verify the token
-            const tokenVerified = await axios.post(VERIFY_USER_URL, token);
+            const tokenVerified = await verifyToken(token);
 
             // Isolate the data property
             const user = tokenVerified.data;
