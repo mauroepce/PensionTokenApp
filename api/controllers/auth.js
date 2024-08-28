@@ -90,7 +90,7 @@ const authController = {
                 await sendVerificationEmail(storeVerificationTokenData.email, tokenStored);
             }
     
-            res.status(200).send({ user: userCreated });
+            res.status(200).send({ data: userCreated, message: "User registered successfully"})
         } catch (error) {
             console.error(`Error while registering the "user" on DB: ${error.message}`);
             res.status(400).json({ error: error.message });
@@ -105,51 +105,57 @@ const authController = {
 
     loginController: async (req, res) => {
         try {
-           
-            const email = {email: req.body.email}
-       
-            const password  = req.body.password
+            const { email, password } = req.body;
 
-            // Check if user exist on DB
-            const checkUser = await axios.post(CHECK_USER_EMAIL, email)
-            // Isolate the data property
-            const user = checkUser.data;
-        
+            console.log("email", email);
+            console.log("password", password);
             
-            // Response if user doesn't exist
-            if(!user){
-                return res.status(400).send({error: "There's no user with this email"});   
+            
+    
+            // Verificar si se proporciona email 
+            if (!email) {
+                return res.status(400).send({ error: "Please enter an email" });
             }
-            
-            // Check if the user login password match with the DB
-            const  passwordHashed = user.password;
-            const check = await compare(password, passwordHashed)
-          
-            // Response if passwords doesn't match
-            if(!check){
-                return res.status(400).send({error: "The password doesn't match"}); 
+    
+            // Verificar si se proporciona password
+            if (!password) {
+                return res.status(400).send({ error: "Please enter a password" });
             }
-
-            // Set to "undefined" the password value
-            delete user["password"]
-        
-
-            // Data object to respond if passwords match
-            const data = {
-                token: await tokenSign(user),
-                user
+    
+            // Verificar si el usuario existe en la base de datos
+            const checkUser = await users.findOne({ email }).select("+password");
+            if (!checkUser) {
+                return res.status(400).send({ error: "There's no user with this email" });
             }
-            
-            res.status(200).send(data)
-
-        } catch (error) {
-            
-            console.error(`Error while trying to log the user: ${error.message}`);
-            res.status(500).json({
-                error: {
-                    message: error,
+    
+            if (!checkUser.isVerified) {
+                return res.status(400).send({ error: "Please verify your email before login" });
+            }
+    
+            // Verificar si la contraseña es correcta
+            const checkPassword = await bcrypt.compare(password, checkUser.password);
+            if (!checkPassword) {
+                return res.status(400).send({ error: "The password doesn't match" });
+            }
+    
+            // Generar el token JWT
+            const token = await tokenSign(checkUser);
+    
+            // Eliminar el campo password del usuario antes de enviar la respuesta
+            checkUser.password = undefined;
+    
+            // Enviar la respuesta con el token y los datos del usuario
+            res.status(200).send({
+                data: {
+                    token,
+                    user: checkUser
                 },
+                message: "User logged in successfully"
             });
+    
+        } catch (error) {
+            console.error(`Error while trying to log the user: ${error.message}`);
+            res.status(500).json({ error: "Internal Server Error" });
         }
     },
 
@@ -160,24 +166,40 @@ const authController = {
      */
     verifyUserController: async (req, res) => {
         try {
-            const token = req.body;
+            const token = req.query.token;
+            console.log("Received token:", token);
             
-            // Verify the token
-            const tokenVerified = await verifyToken(token);
-
-            // Isolate the data property
-            const user = tokenVerified.data;
-
-            
-            res.status(200).send(user);
+            if (!token) {
+                return res.status(400).send({ error: "Token not provided" });
+            }
+    
+            // Buscar al usuario en la base de datos utilizando el token de verificación
+            const user = await users.findOne({ verificationToken: token });
+    
+            if (!user) {
+                return res.status(400).send({ error: "Invalid or expired token" });
+            }
+    
+            // Calcular el tiempo de expiración (2 horas en milisegundos)
+            const expirationTime = 2 * 60 * 60 * 1000; // 2 horas
+            const currentTime = new Date().getTime();
+            const tokenSentTime = new Date(user.verificationSentAt).getTime();
+    
+            // Verificar si el token ha expirado
+            if (currentTime - tokenSentTime > expirationTime) {
+                return res.status(400).send({ error: "Token has expired" });
+            }
+    
+            // Si no ha expirado, marcar al usuario como verificado
+            user.isVerified = true;
+            user.verificationToken = null;  // Eliminar el token después de verificar
+            await user.save();
+    
+            res.status(200).send({ message: "User verified successfully", user });
+    
         } catch (error) {
-            
             console.error(`Error while trying to verify user on DB: ${error.message}`);
-            const errorMessage = error.response.data.error;
-            res.status(400).json({
-                error: errorMessage
-            });
-
+            res.status(400).json({ error: "An error occurred while verifying the token" });
         }
     }
 

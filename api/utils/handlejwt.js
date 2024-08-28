@@ -7,6 +7,8 @@ const JWT_SECRET = process.env.JWT_SECRET
  * @param {*} user 
  */
 
+console.log('JWT_SECRET',JWT_SECRET);
+
 
 const tokenSign = async (user) => {
     const sign = jwt.sign(

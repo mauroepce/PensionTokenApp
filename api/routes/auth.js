@@ -7,5 +7,14 @@ const router = express.Router();
  */
 router.post("/register-user", authController.registerController)
 
+/**
+ * Login a user
+ */
+router.post("/login-user", authController.loginController)
+
+/**
+ * verify user
+ */
+router.get("/verify-user", authController.verifyUserController)
 
 module.exports = router;

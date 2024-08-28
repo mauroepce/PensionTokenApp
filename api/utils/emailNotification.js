@@ -33,7 +33,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
       html: `
         <h1>Welcome to PensionTokenApp</h1>
         <p>Please, verified your email clicking the following link:</p>
-        <a href="${FRONT_END_URL}/verify-user?token=${verificationToken}">Verifiy my email</a>
+        <a href="${FRONT_END_URL}/api/auth/verify-user?token=${verificationToken}">Verifiy my email</a>
       `,
     };
 
