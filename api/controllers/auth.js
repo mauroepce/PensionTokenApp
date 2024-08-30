@@ -1,16 +1,11 @@
 const axios = require('axios');
 const { encrypt } = require("../utils/handlePassword");
 const { tokenSign, verifyToken } = require('../utils/handlejwt');
-const { compare } = require('bcryptjs');
+const { compare, compareSync } = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { sendVerificationEmail } = require('../utils/emailNotification');
 const users = require('../models/users');
 require('dotenv').config();
-
-const USER_REGISTER_URL = process.env.USER_REGISTER_URL;
-const CHECK_USER_EMAIL = process.env.CHECK_USER_EMAIL;
-const STORE_VERIFICATION_CODE= process.env.STORE_VERIFICATION_CODE;
-const VERIFY_USER_URL = process.env.VERIFY_USER_URL;
 
 const authController = {
 
@@ -106,11 +101,6 @@ const authController = {
     loginController: async (req, res) => {
         try {
             const { email, password } = req.body;
-
-            console.log("email", email);
-            console.log("password", password);
-            
-            
     
             // Verificar si se proporciona email 
             if (!email) {
@@ -128,12 +118,13 @@ const authController = {
                 return res.status(400).send({ error: "There's no user with this email" });
             }
     
+            // Verificar si el usuario ha confirmado su cuenta
             if (!checkUser.isVerified) {
-                return res.status(400).send({ error: "Please verify your email before login" });
+                return res.status(400).send({ error: "Please verify your email before logging in" });
             }
     
             // Verificar si la contraseña es correcta
-            const checkPassword = await bcrypt.compare(password, checkUser.password);
+            const checkPassword = await compareSync(password, checkUser.password);
             if (!checkPassword) {
                 return res.status(400).send({ error: "The password doesn't match" });
             }
